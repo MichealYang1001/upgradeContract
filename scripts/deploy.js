@@ -1,42 +1,46 @@
-// We require the Hardhat Runtime Environment explicitly here. This is optional
-// but useful for running the script in a standalone fashion through `node <script>`.
-//
-// You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
-// will compile your contracts, add the Hardhat Runtime Environment's members to the
-// global scope, and execute the script.
-const hre = require("hardhat");
+const { ethers } = require("hardhat");
 
 async function main() {
-  const Lock = await hre.ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy();
-  await lock.deployed();
-  console.log(
-    `deployed lock to ${lock.address}`
-  );
-  const Lock2 = await hre.ethers.getContractFactory("Lock2");
-  const lock2 = await Lock2.deploy();
-  await lock2.deployed();
-  console.log(
-    `deployed lock2 to ${lock2.address}`
-  );
-  const ProxyAdmin = await hre.ethers.getContractFactory("ProxyAdmin");
-  const ProxyAdmin_ = await ProxyAdmin.deploy();
-  await ProxyAdmin_.deployed();
-  console.log(
-    `deployed ProxyAdmin_ to ${ProxyAdmin_.address}`
-  );
+  const Logic = await ethers.getContractFactory("Logic");
+  const logic = await Logic.deploy();
+  await logic.deployed();
 
-  const Proxy = await hre.ethers.getContractFactory("TransparentUpgradeableProxy");
-  const Proxy_ = await Proxy.deploy(lock.address,ProxyAdmin_.address,"0x");
-  await Proxy_.deployed();
-  console.log(
-    `deployed Proxy_ to ${Proxy_.address}`
+  const Proxy = await ethers.getContractFactory("Proxy");
+  const proxy = await Proxy.deploy(
+    logic.address,
+    await ethers.provider.getSigner(0).getAddress(),
+    "0x"
   );
-}
+  await proxy.deployed();
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
-main().catch((error) => {
+  const logicAddress = await proxy.callStatic.logic();
+  console.log("Logic contract deployed to:", logic.address);
+  console.log("Proxy contract deployed to:", proxy.address);
+  console.log("Logic address in proxy:", logicAddress);
+
+  const logicUpgrade = await Logic.deploy();
+  await logicUpgrade.deployed();
+  console.log("New logic contract deployed to:", logicUpgrade.address);
+
+  const proxyAsLogic = Logic.attach(proxy.address);
+  await proxyAsLogic.initialize();
+
+  const value1 = await proxyAsLogic.getValue();
+  console.log("Value before upgrade:", value1.toNumber());
+
+  await proxyAsLogic.upgradeTo(logicUpgrade.address);
+ 
+  const value2 = await proxyAsLogic.getValue();
+  console.log("Value after upgrade:", value2.toNumber());
+  
+  await proxyAsLogic.setValue(1234);
+  const value3 = await proxyAsLogic.getValue();
+  console.log("Value after set:", value3.toNumber());
+  }
+  
+  main()
+  .then(() => process.exit(0))
+  .catch((error) => {
   console.error(error);
-  process.exitCode = 1;
-});
+  process.exit(1);
+  });
